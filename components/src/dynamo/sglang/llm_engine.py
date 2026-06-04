@@ -300,11 +300,13 @@ class SglangLLMEngine(LLMEngine):
             "SGLang",
         )
 
+        rid = request.get("rid") or context.trace_id
+
         stream = await self.engine.async_generate(
             **input_param,
             sampling_params=sampling_params,
             stream=True,
-            rid=context.trace_id,
+            rid=rid,
             data_parallel_rank=sgl_dp_rank,
             **telemetry.engine_trace_kwargs(
                 context,
@@ -330,7 +332,7 @@ class SglangLLMEngine(LLMEngine):
                 except Exception as e:
                     logger.warning(
                         "prefill canary stream failed (rid=%s): %s",
-                        context.trace_id,
+                        rid,
                         e,
                         exc_info=True,
                     )
@@ -353,10 +355,10 @@ class SglangLLMEngine(LLMEngine):
             # Completed path: router awaits our stream end before
             # forwarding to decode — a sync drain deadlocks, so spawn.
             if request.get("bootstrap_info"):
-                await self._consume_prefill_stream(stream, context, context.trace_id)
+                await self._consume_prefill_stream(stream, context, rid)
                 return
             task = asyncio.create_task(
-                self._consume_prefill_stream(stream, context, context.trace_id)
+                self._consume_prefill_stream(stream, context, rid)
             )
             self._prefill_consume_tasks.add(task)
             task.add_done_callback(self._prefill_consume_tasks.discard)

@@ -138,6 +138,7 @@ class PrefillWorkerHandler(BaseWorkerHandler):
             dp_rank = None
 
         trace_header = context.trace_headers() if self.enable_trace else None
+        rid = inner_request.get("rid") or trace_id
 
         lora_path = self._resolve_lora(inner_request)
         if lora_path:
@@ -153,7 +154,7 @@ class PrefillWorkerHandler(BaseWorkerHandler):
             bootstrap_port=bootstrap_port,
             bootstrap_room=bootstrap_room,
             external_trace_header=trace_header,
-            rid=trace_id,
+            rid=rid,
             data_parallel_rank=dp_rank,
             **self._session_kwargs(inner_request),
             lora_path=lora_path,

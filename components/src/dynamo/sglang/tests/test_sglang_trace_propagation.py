@@ -32,8 +32,8 @@ pytestmark = [
 class _FakeContext:
     def __init__(self, trace_id: str | None = None, span_id: str | None = None):
         self._trace_id = trace_id
-        # SGLang's request uses context.trace_id directly as the SGLang RID,
-        # so keep the attribute available alongside the trace_headers() method.
+        # Without a client-provided request rid, SGLang uses context.trace_id
+        # as the SGLang RID, so keep it available alongside trace_headers().
         self.trace_id = trace_id
         self._span_id = span_id
 
@@ -108,3 +108,28 @@ async def test_gates_off_when_enable_trace_false():
 
     # kwarg omitted (engine_trace_kwargs returns {} when enabled=False).
     assert "external_trace_header" not in captured
+
+
+async def test_request_rid_overrides_context_trace_id():
+    captured: dict = {}
+
+    async def fake_async_generate(**kwargs):
+        captured.update(kwargs)
+        return _empty_async_iter()
+
+    await _drain(
+        _make_engine(fake_async_generate, enable_trace=False),
+        _FakeContext(trace_id="a" * 32, span_id="b" * 16),
+    )
+
+    assert captured["rid"] == "a" * 32
+
+    captured.clear()
+    engine = _make_engine(fake_async_generate, enable_trace=False)
+    async for _ in engine.generate(
+        {"token_ids": [1, 2, 3], "rid": "request-123"},
+        _FakeContext(trace_id="a" * 32, span_id="b" * 16),
+    ):
+        pass
+
+    assert captured["rid"] == "request-123"

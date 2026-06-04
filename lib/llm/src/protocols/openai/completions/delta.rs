@@ -33,7 +33,13 @@ impl NvCreateCompletionRequest {
             self.inner.logprobs.is_some(),
             self.nvext(),
         );
-        DeltaGenerator::new(self.inner.model.clone(), options, request_id)
+        let response_id = self
+            .unsupported_fields
+            .get("rid")
+            .and_then(|value| value.as_str())
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("cmpl-{request_id}"));
+        DeltaGenerator::new(self.inner.model.clone(), options, response_id)
     }
 }
 
@@ -49,10 +55,10 @@ pub struct DeltaGenerator {
 }
 
 impl DeltaGenerator {
-    pub fn new(model: String, options: DeltaGeneratorOptions, request_id: String) -> Self {
+    pub fn new(model: String, options: DeltaGeneratorOptions, response_id: String) -> Self {
         let (now, usage, tracker) = delta_common::initial_state();
         Self {
-            id: format!("cmpl-{request_id}"),
+            id: response_id,
             object: "text_completion".to_string(),
             created: now,
             model,
@@ -472,6 +478,21 @@ mod tests {
         let response_json = serde_json::to_value(&response).expect("serialize response");
         assert!(response_json["choices"][0].get("stop_reason").is_none());
         assert_eq!(response_json["nvext"]["stop_reason"], "END");
+    }
+
+    #[test]
+    fn test_rid_overrides_response_id() {
+        let mut request = create_test_request();
+        request
+            .unsupported_fields
+            .insert("rid".to_string(), serde_json::json!("request-123"));
+        let mut generator = request.response_generator("fallback-id".to_string());
+
+        let response = generator
+            .choice_from_postprocessor(final_backend_output())
+            .expect("choice generation");
+
+        assert_eq!(response.inner.id, "request-123");
     }
 
     #[test]
