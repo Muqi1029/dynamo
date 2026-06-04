@@ -165,6 +165,10 @@ pub struct PreprocessedRequest {
     /// `HealthCheckManager` deserialize without carrying a model name —
     /// real traffic always has this set by the preprocessor; only the
     /// in-process canary path is allowed to omit it.
+    #[builder(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rid: Option<String>,
+
     #[serde(default)]
     pub model: String,
 

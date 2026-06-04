@@ -134,6 +134,7 @@ def _init_worker(
 
 def _preprocess_worker(
     request: dict[str, Any],
+    request_id: str,
     model_name: str,
     eos_token_id: int | None,
 ) -> SglangPreprocessWorkerResult:
@@ -153,6 +154,7 @@ def _preprocess_worker(
 
     dynamo_preproc = _build_dynamo_preproc(
         request,
+        request_id,
         pre.prompt_token_ids,
         model_name,
         eos_token_id,
@@ -175,6 +177,7 @@ def _preprocess_worker(
 
 def _build_dynamo_preproc(
     request: dict[str, Any],
+    request_id: str,
     prompt_token_ids: list[int],
     model_name: str,
     eos_token_id: int | None,
@@ -208,6 +211,7 @@ def _build_dynamo_preproc(
         logprobs_val = top_logprobs
 
     preproc = {
+        "rid": request_id,
         "model": model_name,
         "token_ids": prompt_token_ids,
         "stop_conditions": {
@@ -331,7 +335,7 @@ class SglangProcessor:
         self, request: dict[str, Any], context: Any | None = None
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Single-process path: preprocess, dispatch, stream post-process."""
-        request_id = random_uuid()
+        request_id = request.get("rid") or random_uuid()
 
         try:
             if self.debug_perf:
@@ -363,6 +367,7 @@ class SglangProcessor:
 
             dynamo_preproc = _build_dynamo_preproc(
                 request,
+                request_id,
                 tokens,
                 request["model"],
                 self.eos_token_id,
@@ -395,7 +400,7 @@ class SglangProcessor:
         self, request: dict[str, Any], context: Any | None = None
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Pool path: preprocess in worker, stream in main process."""
-        request_id = random_uuid()
+        request_id = request.get("rid") or random_uuid()
 
         # --- Phase 1: Preprocess (semaphore held) ---
         assert self._worker_semaphore is not None
@@ -405,6 +410,7 @@ class SglangProcessor:
                 future = self.preprocess_pool.submit(
                     _preprocess_worker,
                     request,
+                    request_id,
                     request["model"],
                     self.eos_token_id,
                 )
