@@ -711,6 +711,25 @@ mod context_length_validation {
     }
 
     #[tokio::test]
+    async fn test_rid_propagates_to_preprocessed_request() {
+        let mdc = ModelDeploymentCard::load_from_disk(MODEL_PATH, None).unwrap();
+        let preprocessor = OpenAIPreprocessor::new(mdc).unwrap();
+        let request: NvCreateChatCompletionRequest = serde_json::from_value(serde_json::json!({
+            "model": "test-model",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "rid": "request-123"
+        }))
+        .unwrap();
+
+        let (preprocessed, _, _) = preprocessor
+            .preprocess_request(&request, None)
+            .await
+            .unwrap();
+
+        assert_eq!(preprocessed.rid.as_deref(), Some("request-123"));
+    }
+
+    #[tokio::test]
     async fn test_prompt_exceeding_context_length_returns_400() {
         let mut mdc = ModelDeploymentCard::load_from_disk(MODEL_PATH, None).unwrap();
         // Set a very small context length so even a short prompt exceeds it

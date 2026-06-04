@@ -803,12 +803,17 @@ mod tests {
         let request_json = json!({
             "model": "test-model",
             "prompt": [1, 2, 3],
+            "rid": "request-123",
             "allowed_token_ids": [10, 11],
             "bad_words_token_ids": [[12, 13]]
         });
         let request: NvCreateCompletionRequest =
             serde_json::from_value(request_json).expect("Failed to deserialize request");
 
+        assert_eq!(
+            request.unsupported_fields.get("rid"),
+            Some(&serde_json::json!("request-123"))
+        );
         assert_eq!(
             request.unsupported_fields.get("allowed_token_ids"),
             Some(&serde_json::json!([10, 11]))
@@ -818,6 +823,16 @@ mod tests {
             Some(&serde_json::json!([[12, 13]]))
         );
         assert!(ValidateRequest::validate(&request).is_ok());
+
+        let invalid_rid = json!({
+            "model": "test-model",
+            "prompt": [1, 2, 3],
+            "rid": 123
+        });
+        let request: NvCreateCompletionRequest =
+            serde_json::from_value(invalid_rid).expect("Failed to deserialize request");
+        let err = ValidateRequest::validate(&request).expect_err("invalid rid");
+        assert!(err.to_string().contains("rid"));
     }
 
     #[test]

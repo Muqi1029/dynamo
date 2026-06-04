@@ -717,6 +717,13 @@ impl OpenAIPreprocessor {
     ) -> Result<PreprocessedRequestBuilder> {
         let mut builder = PreprocessedRequest::builder();
         builder.model(request.model());
+        if let Some(rid) = request
+            .unsupported_fields()
+            .and_then(|fields| fields.get("rid"))
+            .and_then(|value| value.as_str())
+        {
+            builder.rid(Some(rid.to_string()));
+        }
 
         let mut stop_conditions = request.extract_stop_conditions()?;
         // Harmony's `<|call|>` is BOTH the tool-call terminator the parser needs in the

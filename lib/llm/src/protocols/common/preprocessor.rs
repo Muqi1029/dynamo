@@ -159,12 +159,10 @@ pub type MultimodalDataMap = std::collections::HashMap<String, Vec<MultimodalDat
 /// crate is responsible for converting request from the public APIs to this internal representation.
 #[derive(Serialize, Deserialize, Debug, Clone, Builder)]
 pub struct PreprocessedRequest {
-    /// ID of the model to use.
+    /// Optional backend request ID forwarded from clients that provide `rid`.
     ///
-    /// `serde(default)` so canary payloads from the runtime's
-    /// `HealthCheckManager` deserialize without carrying a model name —
-    /// real traffic always has this set by the preprocessor; only the
-    /// in-process canary path is allowed to omit it.
+    /// `serde(default)` so legacy payloads and runtime canary requests can
+    /// deserialize without carrying a client-provided request ID.
     #[builder(default)]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rid: Option<String>,
