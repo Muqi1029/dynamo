@@ -46,7 +46,7 @@ pub struct NvCreateCompletionRequest {
     pub return_tokens_as_token_ids: Option<bool>,
 
     /// Catch-all for unsupported fields - checked during validation
-    #[serde(flatten, default, skip_serializing)]
+    #[serde(flatten, default)]
     pub unsupported_fields: std::collections::HashMap<String, serde_json::Value>,
 }
 
@@ -823,6 +823,12 @@ mod tests {
             Some(&serde_json::json!([[12, 13]]))
         );
         assert!(ValidateRequest::validate(&request).is_ok());
+
+        let serialized = serde_json::to_value(&request).expect("serialize request");
+        assert_eq!(
+            serialized.get("rid"),
+            Some(&serde_json::json!("request-123"))
+        );
 
         let invalid_rid = json!({
             "model": "test-model",

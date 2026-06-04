@@ -89,6 +89,30 @@ def _map_finish_reason(raw: str | None) -> str | None:
     return raw
 
 
+def _request_rid(request: dict[str, Any]) -> str | None:
+    rid = request.get("rid")
+    if isinstance(rid, str) and rid:
+        return rid
+
+    unsupported_fields = request.get("unsupported_fields")
+    if isinstance(unsupported_fields, dict):
+        rid = unsupported_fields.get("rid")
+        if isinstance(rid, str) and rid:
+            return rid
+
+    return None
+
+
+def _ensure_request_rid(request: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    request_id = _request_rid(request) or random_uuid()
+    if request.get("rid") == request_id:
+        return request, request_id
+
+    request = dict(request)
+    request["rid"] = request_id
+    return request, request_id
+
+
 # ---------------------------------------------------------------------------
 # Worker process globals (initialized once per process by _init_worker)
 # ---------------------------------------------------------------------------
@@ -304,6 +328,8 @@ class SglangProcessor:
         self, request: dict[str, Any], context: Any | None = None
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Main entry point: preprocess, route, post-process a chat request."""
+        request, _ = _ensure_request_rid(request)
+
         if self.debug_perf:
             from .perf_instrumentation import (  # type: ignore[import-not-found, import-untyped]
                 enter_generator,
@@ -335,7 +361,7 @@ class SglangProcessor:
         self, request: dict[str, Any], context: Any | None = None
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Single-process path: preprocess, dispatch, stream post-process."""
-        request_id = request.get("rid") or random_uuid()
+        request, request_id = _ensure_request_rid(request)
 
         try:
             if self.debug_perf:
@@ -400,7 +426,7 @@ class SglangProcessor:
         self, request: dict[str, Any], context: Any | None = None
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Pool path: preprocess in worker, stream in main process."""
-        request_id = request.get("rid") or random_uuid()
+        request, request_id = _ensure_request_rid(request)
 
         # --- Phase 1: Preprocess (semaphore held) ---
         assert self._worker_semaphore is not None

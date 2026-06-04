@@ -13,6 +13,7 @@ import asyncio
 import json
 import sys
 import types
+from concurrent.futures import Future
 
 import pytest
 from _routed_engine_fakes import FakeRoutedEngine, FakeRoutedItem
@@ -1898,6 +1899,92 @@ class TestReasoningParsing:  # FRONTEND.9 — reasoning ↔ tool-call orchestrat
 
         assert "think about this" in reasoning
         assert "42" in content
+
+
+# ---------------------------------------------------------------------------
+# SglangProcessor: request id propagation
+# ---------------------------------------------------------------------------
+
+
+class TestRequestRidPropagation:
+    """Client-provided rid is the request id seen by backend and responses."""
+
+    class _Tokenizer:
+        chat_template = "{{ messages }}"
+
+        def apply_chat_template(self, messages, **kwargs):
+            return [1, 2, 3]
+
+    class _ImmediatePreprocessPool:
+        def submit(self, fn, request, request_id, model_name, eos_token_id):
+            future: Future = Future()
+            future.set_result(
+                SglangPreprocessWorkerResult(
+                    prompt_token_ids=[1, 2, 3],
+                    dynamo_preproc=_build_dynamo_preproc(
+                        request,
+                        request_id,
+                        [1, 2, 3],
+                        model_name,
+                        eos_token_id,
+                    ),
+                    request=request,
+                )
+            )
+            return future
+
+    def _processor(self, routed_engine, preprocess_pool=None):
+        return SglangProcessor(
+            tokenizer=self._Tokenizer(),
+            routed_engine=routed_engine,
+            tool_call_parser_name=None,
+            reasoning_parser_name=None,
+            eos_token_id=None,
+            preprocess_pool=preprocess_pool,
+            preprocess_workers=0,
+        )
+
+    def _request(self, **extra):
+        request = {
+            "model": "test-model",
+            "messages": [{"role": "user", "content": "Hello"}],
+        }
+        request.update(extra)
+        return request
+
+    def _routed_engine(self):
+        return FakeRoutedEngine(
+            items=[{"token_ids": [1], "text": "ok", "finish_reason": "stop"}]
+        )
+
+    def test_generator_forwards_top_level_rid(self):
+        routed = self._routed_engine()
+        processor = self._processor(routed)
+
+        async def collect():
+            return [
+                item
+                async for item in processor.generator(self._request(rid="Muqi1029"))
+            ]
+
+        items = asyncio.run(collect())
+
+        assert routed.requests[0]["rid"] == "Muqi1029"
+        assert items[0]["id"] == "Muqi1029"
+
+    def test_pool_generator_expands_unsupported_fields_rid(self):
+        routed = self._routed_engine()
+        processor = self._processor(routed, self._ImmediatePreprocessPool())
+        request = self._request(unsupported_fields={"rid": "Muqi1029"})
+
+        async def collect():
+            return [item async for item in processor.generator(request)]
+
+        items = asyncio.run(collect())
+
+        assert "rid" not in request
+        assert routed.requests[0]["rid"] == "Muqi1029"
+        assert items[0]["id"] == "Muqi1029"
 
 
 # ---------------------------------------------------------------------------
